@@ -1,0 +1,43 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files (never commit real keys)
+.env
+.env.local
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Runtime data (uploads, local state)
+data/*
+!data/.gitkeep
+
+# Local ChromaDB storage
+chroma/
+.chroma/
+chroma_db/
+data/chroma/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
