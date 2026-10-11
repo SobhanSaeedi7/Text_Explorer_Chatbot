@@ -4,9 +4,10 @@ A small local educational project. The eventual goal: upload one `.txt`
 file and ask questions about its contents using RAG (retrieval-augmented
 generation), running comfortably on a laptop with ~6 GB RAM.
 
-Current stage: **project skeleton and dev setup only**. No file
-processing, embeddings, ChromaDB logic, RAG, chat memory, or LLM calls
-are implemented yet.
+Current stage: **TXT upload only**. Users can upload one `.txt` file
+(max 2 MB, configurable via `MAX_UPLOAD_MB`), with validation for
+extension, size, decoding, and empty content. No embeddings,
+ChromaDB logic, RAG, chat memory, or LLM calls are implemented yet.
 
 ## Prerequisites
 
@@ -42,7 +43,8 @@ uv run pytest
 .
 ├── src/pelekan_rag_chat/   # application package
 │   ├── __init__.py
-│   ├── app.py              # minimal Streamlit entry point (skeleton)
+│   ├── app.py              # Streamlit entry point (TXT upload stage)
+│   ├── document.py         # .txt validation + UTF-8 reading helpers
 │   └── config.py           # env-var placeholders for later stages
 ├── tests/                  # pytest tests
 ├── data/                   # runtime data (gitignored, local only)
