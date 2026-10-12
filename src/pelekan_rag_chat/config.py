@@ -1,8 +1,7 @@
-"""Minimal configuration (upload stage).
+"""Configuration from environment variables.
 
-Reads optional environment variables so later stages (embeddings,
-vector store, LLM) have a single place for settings. No network
-calls or model loading happens here.
+Reads optional settings in one place. No network calls or model
+loading happens here.
 """
 
 import os
@@ -31,3 +30,11 @@ MAX_UPLOAD_BYTES: int = MAX_UPLOAD_MB * 1024 * 1024
 CHUNK_SIZE: int = _read_int("CHUNK_SIZE", 1000)
 CHUNK_OVERLAP: int = _read_int("CHUNK_OVERLAP", 200, minimum=0)
 COLLECTION_NAME: str = os.getenv("COLLECTION_NAME", "pelekan_docs")
+
+# Retrieval: how many chunks to include as answer context.
+TOP_K: int = _read_int("TOP_K", 4)
+
+# AVAL AI (OpenAI-compatible endpoint) for answer generation.
+AVALAI_API_KEY: str = os.getenv("AVALAI_API_KEY", "")
+AVALAI_BASE_URL: str = os.getenv("AVALAI_BASE_URL", "https://api.avalai.ir/v1")
+AVALAI_MODEL: str = os.getenv("AVALAI_MODEL", "gpt-6-luna")
