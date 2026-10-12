@@ -1,13 +1,12 @@
-"""Streamlit entry point: TXT upload + chunking + ChromaDB indexing.
+"""Streamlit entry point: TXT upload + RAG chat with temporary memory.
 
 Scope of this stage:
-- Upload exactly one .txt file (max size shown in the UI).
-- Validate extension, size, decoding, and empty content.
-- Split the text into overlapping chunks and index them once in a
-  persistent local ChromaDB collection (default embedding function).
-- Enable the question box only after the file was loaded and indexed.
-
-RAG retrieval, chat history, and LLM calls come later.
+- Upload exactly one .txt file, validate, split, and index it once.
+- Retrieve relevant chunks per question (active document only).
+- Generate grounded Persian answers with AVAL AI + show sources.
+- Temporary in-session conversation history with follow-up support
+  (rewritten into standalone retrieval queries). History is never
+  persisted to disk or any database.
 """
 
 from __future__ import annotations
@@ -16,8 +15,17 @@ import streamlit as st
 
 from pelekan_rag_chat import config
 from pelekan_rag_chat.chunking import make_doc_id
+from pelekan_rag_chat.conversation import (
+    HISTORY_KEY,
+    append_exchange,
+    reset_conversation_state,
+    reset_document_state,
+    rewrite_followup,
+)
 from pelekan_rag_chat.document import process_upload
 from pelekan_rag_chat import store
+from pelekan_rag_chat.llm import generate_answer
+from pelekan_rag_chat.retrieval import format_source_label, retrieve
 
 
 @st.cache_resource
@@ -31,12 +39,15 @@ def _get_collection():
 
 
 def _reset_loaded_file() -> None:
-    """Discard any previously loaded file content and index state."""
-    st.session_state.pop("loaded_filename", None)
-    st.session_state.pop("loaded_text", None)
-    st.session_state.pop("loaded_doc_id", None)
-    st.session_state.pop("indexed_doc_id", None)
-    st.session_state.pop("chunk_count", None)
+    """Discard the active document, its chat history, and index state.
+
+    Used on replace/remove/indexing failure so a new document can never
+    see the previous document's history or content. (ChromaDB deletion
+    itself happens at the call sites via `store.clear_document`.)
+    """
+    reset_document_state(st.session_state)
+    # Legacy key from the pre-chat UI; drop it if an old session has one.
+    st.session_state.pop("last_result", None)
 
 
 def _invalidate_previous_doc(collection, new_doc_id: str | None) -> None:
@@ -149,21 +160,81 @@ def main() -> None:
         and st.session_state.get("loaded_doc_id") is not None
     )
 
-    question = st.text_input(
-        "Ask a question about the file",
-        placeholder="Upload a valid .txt file first…",
+    st.divider()
+    st.subheader("گفت‌وگو")
+    messages = st.session_state.get(HISTORY_KEY, [])
+
+    for message in messages:
+        with st.chat_message(message.role):
+            st.write(message.content)
+            if message.role == "assistant" and message.sources:
+                with st.expander("منابع"):
+                    st.caption(
+                        "گزیده‌هایی از سند که این پاسخ بر اساس آن‌ها نوشته شده است."
+                    )
+                    for source in message.sources:
+                        st.caption(format_source_label(source))
+                        st.write(source.text)
+
+    if st.button("پاک کردن مکالمه", disabled=not messages):
+        # Chat history only: the document and its ChromaDB index stay.
+        reset_conversation_state(st.session_state)
+
+    prompt = st.chat_input(
+        "سؤال خود را درباره‌ی فایل بنویسید…",
         disabled=not ready,
     )
-    submitted = st.button("Submit question", disabled=not ready)
 
-    if submitted:
+    if prompt:
         if not ready:
             st.warning("Upload a valid .txt file before asking a question.")
-        elif not question.strip():
+        elif not prompt.strip():
             st.warning("Type a question first.")
+        elif collection is None:
+            st.error("Index is unavailable, so the question cannot be answered.")
         else:
-            # RAG answering arrives in a later stage.
-            st.info("Question answering is not implemented yet.")
+            active_doc_id = st.session_state.get("loaded_doc_id")
+            history = list(st.session_state.get(HISTORY_KEY, []))
+            # The ORIGINAL question is kept for display and answering;
+            # only the rewritten standalone query is used for retrieval.
+            retrieval_query = rewrite_followup(prompt, history)
+            try:
+                with st.spinner("در حال جست‌وجو در سند…"):
+                    sources = retrieve(
+                        collection, retrieval_query, active_doc_id,
+                        top_k=config.TOP_K,
+                    )
+            except ValueError:
+                st.error("سند فعال معتبر نیست. لطفاً فایل را دوباره بارگذاری کنید.")
+            except Exception:  # noqa: BLE001 - no traces or config in the UI
+                st.error("خطا در بازیابی متن از حافظه محلی. لطفاً دوباره تلاش کنید.")
+            else:
+                if not sources:
+                    st.warning("بخش مرتبطی در سند برای این سؤال پیدا نشد.")
+                else:
+                    try:
+                        with st.spinner("در حال تولید پاسخ…"):
+                            answer = generate_answer(prompt, sources)
+                    except ValueError as exc:
+                        if "AVALAI_API_KEY" in str(exc):
+                            st.error(
+                                "کلید AVALAI_API_KEY تنظیم نشده است. "
+                                "آن را در فایل .env قرار دهید."
+                            )
+                        else:
+                            st.error("سؤال یا متن بازیابی‌شده معتبر نیست.")
+                    except RuntimeError:
+                        st.error(
+                            "پاسخ‌گیری از مدل ناموفق بود. اتصال اینترنت و "
+                            "تنظیمات AVAL AI را بررسی کنید و دوباره تلاش کنید."
+                        )
+                    else:
+                        # Success only: append the exchange, then re-render.
+                        # Failures leave history untouched (no fake answers).
+                        st.session_state[HISTORY_KEY] = append_exchange(
+                            history, prompt.strip(), answer, sources
+                        )
+                        st.rerun()
 
 
 if __name__ == "__main__":

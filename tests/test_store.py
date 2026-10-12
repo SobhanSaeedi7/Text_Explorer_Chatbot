@@ -9,35 +9,12 @@ smoke test in `tests/test_default_embedding_smoke.py`.
 A temporary directory is used, so tests never touch `data/chroma`.
 """
 
-import hashlib
-
 import chromadb
 import pytest
 
+from fake_embeddings import HashEmbeddingFunction
 from pelekan_rag_chat import store
 from pelekan_rag_chat.chunking import make_doc_id
-
-
-class HashEmbeddingFunction:
-    """Lightweight deterministic stand-in (8-dim sha256 vectors).
-
-    Implements the same protocol the installed ChromaDB version expects
-    (`__call__` for documents, `embed_query` for queries, `name`).
-    """
-
-    def __call__(self, input):
-        return [self._embed(text) for text in input]
-
-    def embed_query(self, input):
-        return [self._embed(text) for text in input]
-
-    def name(self):
-        return "test_hash_embedding"
-
-    @staticmethod
-    def _embed(text):
-        digest = hashlib.sha256(text.encode("utf-8")).digest()
-        return [byte / 255.0 for byte in digest[:8]]
 
 
 @pytest.fixture
