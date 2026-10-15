@@ -68,7 +68,6 @@ def main() -> None:
     )
 
     if uploaded is None:
-        st.warning("DEBUG: uploaded is None; resetting document state")
         _invalidate_previous_doc(collection, None)
         _reset_loaded_file()
         st.info("No file selected yet.")
@@ -94,8 +93,6 @@ def main() -> None:
             else:
                 assert text is not None
                 doc_id = make_doc_id(uploaded.name, text)
-                st.write("Current doc_id:", doc_id)
-                st.write("Previous indexed_doc_id:", st.session_state.get("indexed_doc_id"))
                 #If same document has already indexed: do not recompute.
                 if st.session_state.get("indexed_doc_id") == doc_id:
                     st.success(f"Loaded: {uploaded.name} ({len(raw_bytes):,} bytes)")
@@ -208,9 +205,14 @@ def main() -> None:
                             "پاسخ‌گیری از مدل ناموفق بود. اتصال اینترنت و "
                             "تنظیمات AVAL AI را بررسی کنید و دوباره تلاش کنید."
                         )
-                    else:
+                    else:                        
+                        answer_sources = (
+                            [] if answer.strip() == "اطلاعات کافی در سند موجود نیست."
+                            else sources
+                        )
+
                         st.session_state[HISTORY_KEY] = append_exchange(
-                            history, prompt.strip(), answer, sources
+                            history, prompt.strip(), answer, [answer_sources[0]]
                         )
                         st.rerun()
 

@@ -5,7 +5,7 @@ import hashlib
 
 #ُSplit text into chunks 
 def split_text(
-    text: str, chunk_size: int = 1000, chunk_overlap: int = 200
+    text: str, chunk_size: int = 100, chunk_overlap: int = 20
 ) -> list[str]:
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive.")
