@@ -20,12 +20,12 @@ MAX_UPLOAD_MB: int = _read_int("MAX_UPLOAD_MB", 2)
 MAX_UPLOAD_BYTES: int = MAX_UPLOAD_MB * 1024 * 1024
 
 
-CHUNK_SIZE: int = _read_int("CHUNK_SIZE", 1000)
-CHUNK_OVERLAP: int = _read_int("CHUNK_OVERLAP", 200, minimum=0)
+CHUNK_SIZE: int = _read_int("CHUNK_SIZE", 100)
+CHUNK_OVERLAP: int = _read_int("CHUNK_OVERLAP", 20, minimum=0)
 COLLECTION_NAME: str = os.getenv("COLLECTION_NAME", "pelekan_docs")
 
 # Retrieval: how many chunks to include as answer context.
-TOP_K: int = _read_int("TOP_K", 4)
+TOP_K: int = _read_int("TOP_K", 2)
 
 
 AVALAI_API_KEY: str = os.getenv("AVALAI_API_KEY", "")
