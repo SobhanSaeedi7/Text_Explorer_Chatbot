@@ -1,26 +1,12 @@
-"""Split plain text into overlapping chunks (no extra framework).
-
-Character-based splitting works the same for Persian and English and
-needs no tokenizer. The original text is preserved: chunks are plain
-slices of the document (only the whole-document edges are stripped).
-"""
-
 from __future__ import annotations
 
 import hashlib
 
 
+#ُSplit text into chunks 
 def split_text(
     text: str, chunk_size: int = 1000, chunk_overlap: int = 200
 ) -> list[str]:
-    """Split `text` into overlapping chunks.
-
-    - `chunk_size`: max characters per chunk (must be > 0).
-    - `chunk_overlap`: characters shared with the previous chunk.
-      Values >= `chunk_size` are clamped to `chunk_size - 1`, so the
-      window always moves forward (no infinite loop, no empty chunks).
-    - Returns [] for empty or whitespace-only input.
-    """
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive.")
     if chunk_overlap < 0:
@@ -29,9 +15,10 @@ def split_text(
     text = text.strip()
     if not text:
         return []
-
+    
+    # always >= 1, so the loop terminates
     overlap = min(chunk_overlap, chunk_size - 1)
-    step = chunk_size - overlap  # always >= 1, so the loop terminates
+    step = chunk_size - overlap  
 
     chunks: list[str] = []
     start = 0
@@ -45,12 +32,7 @@ def split_text(
         start += step
     return chunks
 
-
+#Make an id for file to stop reindex same files 
 def make_doc_id(filename: str, text: str) -> str:
-    """Stable id for one document version (filename + content hash).
-
-    Re-uploading the exact same file yields the same id, so the app can
-    skip re-indexing. Any content or filename change yields a new id.
-    """
     digest = hashlib.sha256(f"{filename}\n{text}".encode("utf-8")).hexdigest()
     return digest

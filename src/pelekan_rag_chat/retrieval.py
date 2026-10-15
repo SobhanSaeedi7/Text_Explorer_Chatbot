@@ -1,10 +1,3 @@
-"""Retrieve relevant chunks for a question (no re-indexing, no LLM here).
-
-Queries the existing persistent ChromaDB collection with the
-collection's own embedding function. Only the short question text is
-embedded per query; document embeddings are reused, never recomputed.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,16 +7,13 @@ from pelekan_rag_chat import config
 
 @dataclass
 class Source:
-    """One retrieved excerpt, tied to the answer that used it."""
-
     chunk_id: str
     text: str
     filename: str
     chunk_index: int
 
-
+#Make a label for each source 
 def format_source_label(source: Source) -> str:
-    """Short caption for a source (only metadata the TXT index stores)."""
     return f"{source.filename} — بخش {source.chunk_index}"
 
 
@@ -33,14 +23,7 @@ def retrieve(
     doc_id: str | None,
     top_k: int | None = None,
 ) -> list[Source]:
-    """Return up to `top_k` chunks of the active document only.
-
-    - Empty/whitespace questions return [] (no model call needed).
-    - A missing `doc_id` raises ValueError (the UI reports it in Persian).
-    - Results are restricted with `where={"doc_id": doc_id}`, so chunks
-      from any other document can never be returned.
-    - An unknown/empty document yields [] (caller shows "nothing found").
-    """
+    #Return empty list for empty questions
     if not question or not question.strip():
         return []
     if not doc_id:

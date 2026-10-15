@@ -1,6 +1,4 @@
-"""Streamlit entry point: TXT upload + RAG chat with temporary memory.
-
-Scope of this stage:
+""" Scope of this stage:
 - Upload exactly one .txt file, validate, split, and index it once.
 - Retrieve relevant chunks per question (active document only).
 - Generate grounded Persian answers with AVAL AI + show sources.
@@ -28,50 +26,37 @@ from pelekan_rag_chat.llm import generate_answer
 from pelekan_rag_chat.retrieval import format_source_label, retrieve
 
 
-@st.cache_resource
+@st.cache_resource #Don`t remake database with UI rerun
 def _get_collection():
-    """Persistent ChromaDB collection, opened once per app run.
-
-    Cached so Streamlit reruns (e.g. each question submit) reuse the
-    same client instead of reopening the database every time.
-    """
     return store.get_collection(store.get_client())
 
 
 def _reset_loaded_file() -> None:
-    """Discard the active document, its chat history, and index state.
-
-    Used on replace/remove/indexing failure so a new document can never
-    see the previous document's history or content. (ChromaDB deletion
-    itself happens at the call sites via `store.clear_document`.)
-    """
     reset_document_state(st.session_state)
-    # Legacy key from the pre-chat UI; drop it if an old session has one.
     st.session_state.pop("last_result", None)
 
-
+#Clear previous document chunks
 def _invalidate_previous_doc(collection, new_doc_id: str | None) -> None:
-    """Drop the previous document's chunks when it is replaced/removed."""
     old_doc_id = st.session_state.get("loaded_doc_id")
     if collection is not None and old_doc_id and old_doc_id != new_doc_id:
         try:
             store.clear_document(collection, old_doc_id)
-        except Exception:  # noqa: BLE001 - index cleanup must not crash the UI
+        except Exception:
             pass
 
 
 def main() -> None:
-    st.title("Pelekan RAG Chat")
+    st.title("Text Document Files Chatbot")
     st.write("Upload one `.txt` file, then ask a question about it.")
     st.caption(f"Maximum file size: {config.MAX_UPLOAD_MB} MB. Only `.txt` files.")
-    st.caption(
-        "First indexing downloads ChromaDB's default embedding model once "
-        "(~80 MB, cached locally afterwards)."
-    )
+    # st.caption(
+    #     "First indexing downloads ChromaDB's default embedding model once "
+    #     "(~80 MB, cached locally afterwards)."
+    # )
 
     try:
         collection = _get_collection()
-    except Exception as exc:  # noqa: BLE001 - show DB problems in the UI
+    except Exception as exc:
         collection = None
         st.error(f"Could not open the local index: {exc}")
 
@@ -83,8 +68,7 @@ def main() -> None:
     )
 
     if uploaded is None:
-        # No file selected: invalidate the previous document's content
-        # and index before showing the empty state.
+        st.warning("DEBUG: uploaded is None; resetting document state")
         _invalidate_previous_doc(collection, None)
         _reset_loaded_file()
         st.info("No file selected yet.")
@@ -93,12 +77,13 @@ def main() -> None:
     else:
         try:
             raw_bytes = uploaded.getvalue()
-        except Exception:  # noqa: BLE001 - show any read failure in the UI
+        except Exception:
             _reset_loaded_file()
             st.error(f"Selected file: {uploaded.name} — could not read the file.")
             raw_bytes = None
 
         if raw_bytes is not None:
+            #Validate file and decode the raw bytes
             text, error = process_upload(
                 uploaded.name, raw_bytes, config.MAX_UPLOAD_BYTES
             )
@@ -109,8 +94,10 @@ def main() -> None:
             else:
                 assert text is not None
                 doc_id = make_doc_id(uploaded.name, text)
+                st.write("Current doc_id:", doc_id)
+                st.write("Previous indexed_doc_id:", st.session_state.get("indexed_doc_id"))
+                #If same document has already indexed: do not recompute.
                 if st.session_state.get("indexed_doc_id") == doc_id:
-                    # Same document already indexed: do not recompute.
                     st.success(f"Loaded: {uploaded.name} ({len(raw_bytes):,} bytes)")
                     st.success(
                         f"Indexed: {st.session_state.get('chunk_count', 0)} chunks "
@@ -118,8 +105,6 @@ def main() -> None:
                     )
                 else:
                     # Invalidate the previous document's index BEFORE the new
-                    # document becomes active, so old chunks can never leak
-                    # into the replacement's results.
                     _invalidate_previous_doc(collection, doc_id)
                     try:
                         with st.spinner("Splitting and indexing the document…"):
@@ -128,11 +113,6 @@ def main() -> None:
                             )
                             store.remove_other_documents(collection, doc_id)
                     except Exception as exc:
-                        # noqa: BLE001 - show indexing failures in the UI
-                        # The replacement failed: remove anything the failed
-                        # attempt may have stored, and forget the old
-                        # document too (it was invalidated above). Neither
-                        # the old nor the failed new doc stays active.
                         try:
                             store.clear_document(collection, doc_id)
                         except Exception:
@@ -153,6 +133,7 @@ def main() -> None:
                         )
                         st.success(f"Indexed: {chunk_count} chunks")
 
+    #Check to be ready by the uploaded file to start conversation
     ready = (
         bool(st.session_state.get("loaded_text"))
         and st.session_state.get("indexed_doc_id")
@@ -167,6 +148,7 @@ def main() -> None:
     for message in messages:
         with st.chat_message(message.role):
             st.write(message.content)
+            #Write answer sources
             if message.role == "assistant" and message.sources:
                 with st.expander("منابع"):
                     st.caption(
@@ -177,7 +159,7 @@ def main() -> None:
                         st.write(source.text)
 
     if st.button("پاک کردن مکالمه", disabled=not messages):
-        # Chat history only: the document and its ChromaDB index stay.
+        #Reset the chat history only: the document and its ChromaDB index stay.
         reset_conversation_state(st.session_state)
 
     prompt = st.chat_input(
@@ -195,8 +177,6 @@ def main() -> None:
         else:
             active_doc_id = st.session_state.get("loaded_doc_id")
             history = list(st.session_state.get(HISTORY_KEY, []))
-            # The ORIGINAL question is kept for display and answering;
-            # only the rewritten standalone query is used for retrieval.
             retrieval_query = rewrite_followup(prompt, history)
             try:
                 with st.spinner("در حال جست‌وجو در سند…"):
@@ -206,7 +186,7 @@ def main() -> None:
                     )
             except ValueError:
                 st.error("سند فعال معتبر نیست. لطفاً فایل را دوباره بارگذاری کنید.")
-            except Exception:  # noqa: BLE001 - no traces or config in the UI
+            except Exception: 
                 st.error("خطا در بازیابی متن از حافظه محلی. لطفاً دوباره تلاش کنید.")
             else:
                 if not sources:
@@ -229,8 +209,6 @@ def main() -> None:
                             "تنظیمات AVAL AI را بررسی کنید و دوباره تلاش کنید."
                         )
                     else:
-                        # Success only: append the exchange, then re-render.
-                        # Failures leave history untouched (no fake answers).
                         st.session_state[HISTORY_KEY] = append_exchange(
                             history, prompt.strip(), answer, sources
                         )
